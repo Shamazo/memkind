@@ -102,7 +102,7 @@ MEMKIND_EXPORT int memkind_set_arena_map_len(struct memkind *kind)
 
             kind->arena_map_len = arena_num_value;
         } else {
-            int calculated_arena_num = numa_num_configured_cpus() * 4;
+            int calculated_arena_num = numa_num_configured_cpus();
 
 #if ARENA_LIMIT_PER_KIND != 0
             calculated_arena_num =
@@ -704,13 +704,13 @@ MEMKIND_EXPORT int memkind_bijective_get_arena(struct memkind *kind,
 }
 
 // SplitMix64 hash
-static uint64_t hash64(uint64_t x)
-{
-    x += 0x9e3779b97f4a7c15;
-    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9;
-    x = (x ^ (x >> 27)) * 0x94d049bb133111eb;
-    return x ^ (x >> 31);
-}
+//static uint64_t hash64(uint64_t x)
+//{
+//    x += 0x9e3779b97f4a7c15;
+//    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9;
+//    x = (x ^ (x >> 27)) * 0x94d049bb133111eb;
+//    return x ^ (x >> 31);
+//}
 
 #ifdef MEMKIND_TLS
 MEMKIND_EXPORT int memkind_thread_get_arena(struct memkind *kind,
@@ -727,7 +727,10 @@ MEMKIND_EXPORT int memkind_thread_get_arena(struct memkind *kind,
             log_err("malloc() failed.");
         }
         if (!err) {
-            *arena_tsd = hash64((uint64_t)pthread_self()) % kind->arena_map_len;
+//            yeah I think this needs patching, pthread_self makes no sense, it should be per core
+// sched_getcpu instead here, then make arena_map_len fixed to num CPU cores
+            *arena_tsd = (uint64_t)sched_getcpu() % kind->arena_map_len;
+            printf("arena %d", *arena_tds);
             err = pthread_setspecific(kind->arena_key, arena_tsd)
                 ? MEMKIND_ERROR_RUNTIME
                 : 0;
@@ -749,16 +752,16 @@ MEMKIND_EXPORT int memkind_thread_get_arena(struct memkind *kind,
  * but that covers our current needs.
  *
  */
-static uintptr_t get_fs_base()
-{
-    return (uintptr_t)pthread_self();
-}
+//static uintptr_t get_fs_base()
+//{
+//    return (uintptr_t)pthread_self();
+//}
 
 MEMKIND_EXPORT int memkind_thread_get_arena(struct memkind *kind,
                                             unsigned int *arena, size_t size)
 {
     unsigned int arena_idx;
-    arena_idx = hash64(get_fs_base()) & kind->arena_map_mask;
+    arena_idx = (uint64_t)sched_getcpu() % kind->arena_map_len;
     *arena = kind->arena_zero + arena_idx;
     return 0;
 }
